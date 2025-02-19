@@ -108,7 +108,7 @@ class CustomDataset(Dataset):
             h0, w0 = im.shape[:2]  # orig hw
             r = self.img_size / max(h0, w0)  # ratio
             if r != 1:  # if sizes are not equal
-                im = cv2.resize(im, (int(w0 * r), int(h0 * r)))
+                im = cv2.resize(im, (int(w0 * r), int(h0 * r)), interpolation=cv2.INTER_LANCZOS4)
         return im
 
     def load_image_and_labels(self, index):
