@@ -1,4 +1,3 @@
-data/*
 !data/README.md
 outputs/
 inference_outputs
@@ -13,3 +12,6 @@ wandb/*
 
 # IPython checkpoints
 .ipynb_checkpoints
+
+secret.json
+downloaded_photos
