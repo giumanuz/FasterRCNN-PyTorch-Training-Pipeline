@@ -33,7 +33,7 @@ def process_blob(blob):
     if not file_name:
         return
     file_path = os.path.join(download_folder, file_name)
-    print(f"Scaricando {file_name}...")
+    # print(f"Scaricando {file_name}...")
     
 
     photo_id, _ = os.path.splitext(file_name)
@@ -82,6 +82,8 @@ def process_blob(blob):
         elif label == "NO":
             label = "bad_weld"
             no_count += 1
+        if label not in ["good_weld", "bad_weld"]:
+            print(f"Label {label} non riconosciuto")
         ET.SubElement(obj, "name").text = label
         bndbox = ET.SubElement(obj, "bndbox")
         ET.SubElement(bndbox, "xmin").text = str(pin_data.get("x_left"))
@@ -91,8 +93,8 @@ def process_blob(blob):
 
     tree = ET.ElementTree(annotation)
     xml_file = os.path.join(download_folder, f"{photo_id}.xml")
-    tree.write(xml_file, encoding="utf-8", xml_declaration=True)
-    blob.download_to_filename(file_path)
+    # tree.write(xml_file, encoding="utf-8", xml_declaration=True)
+    # blob.download_to_filename(file_path)
     photo_count += 1
 
 with ThreadPoolExecutor() as executor:
