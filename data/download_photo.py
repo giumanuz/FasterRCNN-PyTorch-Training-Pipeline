@@ -23,7 +23,12 @@ db = firestore.client()
 photos_ref = db.collection("photos")
 pins_ref = db.collection("pins")
 
+yes_count = 0
+no_count = 0
+photo_count = 0
+
 def process_blob(blob):
+    global yes_count, no_count, photo_count
     file_name = os.path.basename(blob.name)
     if not file_name:
         return
@@ -41,7 +46,6 @@ def process_blob(blob):
         return
 
     timestamp_str = photo_data.get("date")
-    print(timestamp_str, type(timestamp_str))
     timestamp = datetime.fromisoformat(timestamp_str.isoformat())
     exclude_start = datetime.fromisoformat("2025-02-19T14:30:00+01:00")
     exclude_end = datetime.fromisoformat("2025-02-19T16:15:00+01:00")
@@ -74,8 +78,10 @@ def process_blob(blob):
         label = pin_data.get("label")
         if label == "SI":
             label = "good_weld"
+            yes_count += 1
         elif label == "NO":
             label = "bad_weld"
+            no_count += 1
         ET.SubElement(obj, "name").text = label
         bndbox = ET.SubElement(obj, "bndbox")
         ET.SubElement(bndbox, "xmin").text = str(pin_data.get("x_left"))
@@ -87,11 +93,15 @@ def process_blob(blob):
     xml_file = os.path.join(download_folder, f"{photo_id}.xml")
     tree.write(xml_file, encoding="utf-8", xml_declaration=True)
     blob.download_to_filename(file_path)
+    photo_count += 1
 
-# with ThreadPoolExecutor() as executor:
-#     executor.map(process_blob, blobs)
-first_blob = next(blobs, None)
-if first_blob:
-    process_blob(first_blob)
+with ThreadPoolExecutor() as executor:
+    executor.map(process_blob, blobs)
+# first_blob = next(blobs, None)
+# if first_blob:
+#     process_blob(first_blob)
 
 print("Download delle foto e creazione dei file XML completati! 🎉")
+print(f"Yes count: {yes_count}")
+print(f"No count: {no_count}")
+print(f"Photos saved: {photo_count}")
