@@ -2,7 +2,6 @@ import firebase_admin
 from firebase_admin import credentials, storage, firestore
 import os
 import xml.etree.ElementTree as ET
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from PIL import Image
 
@@ -33,9 +32,7 @@ def process_blob(blob):
     if not file_name:
         return
     file_path = os.path.join(download_folder, file_name)
-    # print(f"Scaricando {file_name}...")
     
-
     photo_id, _ = os.path.splitext(file_name)
     photo_doc = photos_ref.document(photo_id).get()
     if not photo_doc.exists:
@@ -93,15 +90,12 @@ def process_blob(blob):
 
     tree = ET.ElementTree(annotation)
     xml_file = os.path.join(download_folder, f"{photo_id}.xml")
-    # tree.write(xml_file, encoding="utf-8", xml_declaration=True)
-    # blob.download_to_filename(file_path)
+    tree.write(xml_file, encoding="utf-8", xml_declaration=True)
+    blob.download_to_filename(file_path)
     photo_count += 1
 
-with ThreadPoolExecutor() as executor:
-    executor.map(process_blob, blobs)
-# first_blob = next(blobs, None)
-# if first_blob:
-#     process_blob(first_blob)
+for blob in blobs:
+    process_blob(blob)
 
 print("Download delle foto e creazione dei file XML completati! 🎉")
 print(f"Yes count: {yes_count}")
