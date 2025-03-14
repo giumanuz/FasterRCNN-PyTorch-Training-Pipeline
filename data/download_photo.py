@@ -4,6 +4,7 @@ import os
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from PIL import Image
+import random
 
 cred = credentials.Certificate("secret.json")
 firebase_admin.initialize_app(cred, {
@@ -13,9 +14,13 @@ firebase_admin.initialize_app(cred, {
 bucket = storage.bucket()
 
 download_folder = "downloaded_photos"
-os.makedirs(download_folder, exist_ok=True)
+train_folder = os.path.join(download_folder, "train")
+val_folder = os.path.join(download_folder, "val")
+os.makedirs(train_folder, exist_ok=True)
+os.makedirs(val_folder, exist_ok=True)
 
-blobs = bucket.list_blobs(prefix="photos/")
+blobs = list(bucket.list_blobs(prefix="photos/"))
+random.shuffle(blobs)
 
 db = firestore.client()
 
@@ -25,22 +30,24 @@ pins_ref = db.collection("pins")
 yes_count = 0
 no_count = 0
 photo_count = 0
+val_split = int(0.2 * len(blobs))
 
-def process_blob(blob):
-    global yes_count, no_count, photo_count
+for i, blob in enumerate(blobs):
     file_name = os.path.basename(blob.name)
     if not file_name:
-        return
-    file_path = os.path.join(download_folder, file_name)
+        continue
+    
+    folder = val_folder if i < val_split else train_folder
+    file_path = os.path.join(folder, file_name)
     
     photo_id, _ = os.path.splitext(file_name)
     photo_doc = photos_ref.document(photo_id).get()
     if not photo_doc.exists:
-        return
+        continue
 
     photo_data = photo_doc.to_dict()
     if not photo_data.get("processed", False):
-        return
+        continue
 
     timestamp_str = photo_data.get("date")
     timestamp = datetime.fromisoformat(timestamp_str.isoformat())
@@ -48,14 +55,14 @@ def process_blob(blob):
     exclude_end = datetime.fromisoformat("2025-02-19T16:15:00+01:00")
 
     if exclude_start <= timestamp <= exclude_end:
-        return
+        continue
 
     pins_docs = pins_ref.where("photo_id", "==", photo_id).get()
     if len(pins_docs) < 2:
-        return
+        continue
 
     annotation = ET.Element("annotation")
-    ET.SubElement(annotation, "folder").text = download_folder
+    ET.SubElement(annotation, "folder").text = folder
     ET.SubElement(annotation, "filename").text = file_name
     ET.SubElement(annotation, "path").text = file_path
     source = ET.SubElement(annotation, "source")
@@ -89,13 +96,9 @@ def process_blob(blob):
         ET.SubElement(bndbox, "ymax").text = str(pin_data.get("y_bottom"))
 
     tree = ET.ElementTree(annotation)
-    xml_file = os.path.join(download_folder, f"{photo_id}.xml")
+    xml_file = os.path.join(folder, f"{photo_id}.xml")
     tree.write(xml_file, encoding="utf-8", xml_declaration=True)
-    blob.download_to_filename(file_path)
     photo_count += 1
-
-for blob in blobs:
-    process_blob(blob)
 
 print("Download delle foto e creazione dei file XML completati! 🎉")
 print(f"Yes count: {yes_count}")
