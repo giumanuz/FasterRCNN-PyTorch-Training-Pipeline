@@ -2,9 +2,9 @@ import firebase_admin
 from firebase_admin import credentials, storage, firestore
 import os
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from PIL import Image
-from tqdm import tqdm
 
 cred = credentials.Certificate("secret.json")
 firebase_admin.initialize_app(cred, {
@@ -14,10 +14,7 @@ firebase_admin.initialize_app(cred, {
 bucket = storage.bucket()
 
 download_folder = "downloaded_photos"
-train_folder = os.path.join(download_folder, "train")
-val_folder = os.path.join(download_folder, "val")
-os.makedirs(train_folder, exist_ok=True)
-os.makedirs(val_folder, exist_ok=True)
+os.makedirs(download_folder, exist_ok=True)
 
 blobs = bucket.list_blobs(prefix="photos/")
 
@@ -30,18 +27,14 @@ yes_count = 0
 no_count = 0
 photo_count = 0
 
-
 def process_blob(blob):
     global yes_count, no_count, photo_count
     file_name = os.path.basename(blob.name)
     if not file_name:
         return
-
-    # Determine the folder based on the 80/20 ratio
-    if photo_count % 5 == 0:
-        target_folder = val_folder
-    else:
-        target_folder = train_folder
+    file_path = os.path.join(download_folder, file_name)
+    # print(f"Scaricando {file_name}...")
+    
 
     photo_id, _ = os.path.splitext(file_name)
     photo_doc = photos_ref.document(photo_id).get()
@@ -64,22 +57,53 @@ def process_blob(blob):
     if len(pins_docs) < 2:
         return
 
-    # Count the objects without saving the files
+    annotation = ET.Element("annotation")
+    ET.SubElement(annotation, "folder").text = download_folder
+    ET.SubElement(annotation, "filename").text = file_name
+    ET.SubElement(annotation, "path").text = file_path
+    source = ET.SubElement(annotation, "source")
+    ET.SubElement(source, "database").text = "weldLabel"
+    size = ET.SubElement(annotation, "size")
+    blob.download_to_filename(file_path)
+    with Image.open(file_path) as img:
+        width, height = img.size
+        depth = len(img.getbands())
+    ET.SubElement(size, "width").text = str(width)
+    ET.SubElement(size, "height").text = str(height)
+    ET.SubElement(size, "depth").text = str(depth)
+
     for pin_doc in pins_docs:
         pin_data = pin_doc.to_dict()
+        obj = ET.SubElement(annotation, "object")
         label = pin_data.get("label")
         if label == "SI":
+            label = "good_weld"
             yes_count += 1
         elif label == "NO":
+            label = "bad_weld"
             no_count += 1
+        if label not in ["good_weld", "bad_weld"]:
+            print(f"Label {label} non riconosciuto")
+        ET.SubElement(obj, "name").text = label
+        bndbox = ET.SubElement(obj, "bndbox")
+        ET.SubElement(bndbox, "xmin").text = str(pin_data.get("x_left"))
+        ET.SubElement(bndbox, "xmax").text = str(pin_data.get("x_right"))
+        ET.SubElement(bndbox, "ymin").text = str(pin_data.get("y_top"))
+        ET.SubElement(bndbox, "ymax").text = str(pin_data.get("y_bottom"))
 
+    tree = ET.ElementTree(annotation)
+    xml_file = os.path.join(download_folder, f"{photo_id}.xml")
+    # tree.write(xml_file, encoding="utf-8", xml_declaration=True)
+    # blob.download_to_filename(file_path)
     photo_count += 1
 
+with ThreadPoolExecutor() as executor:
+    executor.map(process_blob, blobs)
+# first_blob = next(blobs, None)
+# if first_blob:
+#     process_blob(first_blob)
 
-for blob in tqdm(blobs, desc="Processing blobs"):
-    process_blob(blob)
-
-print("Conteggio delle foto e dei file XML completato! 🎉")
+print("Download delle foto e creazione dei file XML completati! 🎉")
 print(f"Yes count: {yes_count}")
 print(f"No count: {no_count}")
-print(f"Photos counted: {photo_count}")
+print(f"Photos saved: {photo_count}")
